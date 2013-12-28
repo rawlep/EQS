@@ -418,11 +418,11 @@ data Loc = WAdd | WSub | Sg deriving (Eq , Show)
 transpose :: Equation -> Equation 
 transpose eq@(Eqn el er) =
      case locVar True er of  -- 
-        Just (Sg, l) ->   Eqn (simplify $ Sub el l) (simplify $ Sub er l)
+        Just (Sg, l)   -> Eqn (simplify $ Sub el l) (simplify $ Sub er l)
         Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
         Just (WAdd, l) -> Eqn (simplify $ Sub l el) (simplify $ Sub l er)  
         Nothing ->  case locVar False el of 
-                      Just (Sg, l) ->   Eqn (simplify $ Sub el l) (simplify $ Sub er l) 
+                      Just (Sg, l)   -> Eqn (simplify $ Sub el l) (simplify $ Sub er l) 
                       Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
                       Just (WAdd, l) -> Eqn (simplify $  Sub l el) (simplify $ Sub er l) 
                       Nothing        -> eq
@@ -437,14 +437,18 @@ transpose eq@(Eqn el er) =
                      case (locVar b l) of
                        Nothing     ->  case locVar b  r of 
                                          Just (sg, ys) ->  if sg == Sg then
-                                                               Just (WSub, ys)
+                                                               case r of 
+                                                               --  Sub _ _ -> Just (WAdd, ys)
+                                                                 _       -> Just (WSub, ys)
                                                            else 
-                                                               Just (sg, ys)
+                                                               Just (WSub, ys)
                                          _     -> Nothing 
                        Just (sg, ys) -> if sg == Sg then
-                                            Just (WAdd, ys)
+                                            case l of 
+                                              Sub _ _ -> Just (WSub, ys)
+                                              _       -> Just (WAdd, ys)
                                         else 
-                                            Just (sg, ys)
+                                            Just (WSub, ys)
        locVar b (Add l r)       = 
                     case (locVar b l) of
                        Nothing     ->  case locVar b r of 

@@ -5,7 +5,8 @@
 import Data.Char (isNumber,isSpace)
 import Data.List (partition)
 import Control.Monad (liftM,liftM2)
---import IO ()
+
+
 --- maybe2: returns Just if both maybes are a Just or nothing otherwise
 maybe2 :: Maybe a -> Maybe b -> Maybe (a,b)
 maybe2 =  liftM2 (,)
@@ -76,18 +77,15 @@ isLSubs (Sub a b)
     | otherwise             =  False
 isLSubs   _                 =  False
 
---
-sub2add :: Expr -> Expr
-sub2add (Sub a b)  = Add (sub2add a)  (sub2add b)
-sub2add    xs      =  xs
 
---- 
+--- rewrites (Sub a (Sub b (Sub c) d) k) ->  Sub (Sub a  b) (Sub (Sub c d) k)
+--- if a b c and d are the same type
 trnSubs :: Expr -> Expr
 trnSubs s@(Sub a b)
     | canComp a b   =  s 
     | otherwise     = case b of
                         Sub p q -> if canComp a p  
-                                   then (Sub (Sub a p) (trnSubs q)) -- (Sub (Sub a (trnSubs b))) 
+                                   then (Sub (Sub a p) (trnSubs q)) 
                                    else case p of
                                          Add r s -> if canComp a r  
                                                     then Sub (Sub a r) (Add s (trnAdd q))
@@ -97,13 +95,14 @@ trnSubs s@(Sub a b)
 trnSubs  xs         =  xs     
 
 
---- 
+--- rewrites (Add a (Add b (Add c) d) k)  ->  Add (Add a  b) (Add (Add c d) k)
+--- if a b c and d are the same type
 trnAdd :: Expr -> Expr
 trnAdd s@(Add a b)
     | canComp a b   =  s 
     | otherwise     = case b of
                         Add p q -> if canComp a p  
-                                   then (Add (Add a p) (trnAdd q)) -- (Sub (Sub a (trnSubs b))) 
+                                   then (Add (Add a p) (trnAdd q))
                                    else 
                                        case p of
                                          Sub r s -> if canComp a r  
@@ -115,17 +114,6 @@ trnAdd  xs         =  xs
 
 nComp :: Expr  -> Bool
 nComp  l     =   not (isVar l ||  isVal l)
-
--- vlaidating expressions --- do i need this?
-isValid :: Expr -> Bool
-isValid Var                       = True
-isValid (Cval _ Var)              = True
-isValid (Cval _ _)                = False
-isValid (Value _)                 = True
-isValid (Div (Value _) (Value _)) = True
-isValid (Div _ _)                 = False
-isValid (Add l r)                 = isValid l && isValid r
-isValid (Sub l r)                 = isValid l && isValid r 
 
 -- sytactic equality for comaparing operations
 sEqual :: Expr -> Expr -> Bool
@@ -286,20 +274,21 @@ sub (Sub  l  r)                            =  Sub (sub l) (sub r)
 --
 sub   xs                                   =  xs 
 
+--
+--
+sub2add :: Expr -> Expr
+sub2add (Sub a b) = Add (sub2add a) (sub2add b)
+sub2add xs = xs
 
 --- simplify
--- need to write a function to negate additions/substractions like ax+6+4x+7
 simplify  = simplify' 1 -- :: Int -> Expr -> Expr
 simplify' :: Int -> Expr -> Expr
 simplify' n ex
     | normFrm ex    = remZero ex
-    | n > 500       = ex                          
-    | otherwise     = simplify' (n + 1) $  (group .  sub .  trnSubs .  add  . trnAdd . group) ex 
+    | n > 100       = remZero ex                          
+    | otherwise     = simplify' (n + 1) $  (group .  sub .  trnSubs .  add  . trnAdd . group . remZero) ex 
     where 
-      appOrGroup :: (Expr -> Expr) -> Expr -> Expr
-      appOrGroup  f   ex   = let fex = f ex in 
-                               if  sEqual (f ex) ex then group ex else fex
-      --
+      -- rewites expressions with zeros
       remZero :: Expr -> Expr
       remZero  (Cval 0 l)                  = Value 0
       remZero  (Add l (Value 0))           = l
@@ -386,7 +375,7 @@ parseResult f str =
       Just eq -> Left   $ display  eq 
 --------------------------------------------------------------------------
 
--- equations 
+-- equations are pairs of expressions representing LHS and RHS
 data Equation = Eqn Expr Expr 
 
 instance Show Equation where
@@ -406,11 +395,14 @@ solved (Eqn Var (Value _))                 = True
 solved (Eqn Var (Div (Value _) (Value _))) = True
 solved        _                            = False
 
---- execute a devision
+--- rules for division
 divide :: Equation -> Equation
-divide (Eqn (Cval n Var) (Value m))                 
+divide l@(Eqn (Cval n Var) (Value m))                 
     | n < 0 && m < 0                                =  Eqn Var (Div (Value (-m)) (Value (-n)))
     | n < 0                                         =  Eqn Var (Div (Value (-m)) (Value (-n)))
+    | m == 0                                        =  if n /= 0 then (Eqn Var (Value 0)) else l
+    | m == n                                        =  (Eqn Var (Value 1))
+    | n == 1                                        =  (Eqn Var (Value m))                                               
     | otherwise                                     =  Eqn Var (Div (Value m) (Value n))
 divide (Eqn (Cval n Var) (Div (Value m) (Value o))) =  Eqn Var (Div (Value m) (Value $ o * m))
 divide       eq                                     =  eq
@@ -428,23 +420,25 @@ data Loc = WAdd | WSub | Sg deriving (Eq , Show)
 -- execute a transposition 
 transpose :: Equation -> Equation 
 transpose eq@(Eqn el er) =
-     case locVar er of 
+     case locVar True er of  -- 
         Just (Sg, l) ->   Eqn (simplify $ Sub el l) (simplify $ Sub er l)
         Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
-        Just (WAdd, l) -> Eqn (simplify $ Sub el l) (simplify $ Sub er l)  
-        Nothing ->  case locVal el of 
-                      Just (Sg, l) ->   Eqn (simplify $ Sub el l) (simplify $ Sub er l)
+        Just (WAdd, l) -> Eqn (simplify $ Sub l el) (simplify $ Sub l er)  
+        Nothing ->  case locVar False el of 
+                      Just (Sg, l) ->   Eqn (simplify $ Sub el l) (simplify $ Sub er l) 
                       Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
-                      Just (WAdd, l) -> Eqn (simplify $ Sub el l) (simplify $ Sub er l) 
+                      Just (WAdd, l) -> Eqn (simplify $  Sub l el) (simplify $ Sub er l) 
                       Nothing        -> eq
      where
        --- locating values and variables for transposing
-       locVar :: Expr -> Maybe (Loc , Expr)
-       locVar Var          = Just (Sg, Var)
-       locVar (Cval n Var) = Just (Sg, Cval n Var)  
-       locVar (Sub l r)    = 
-                     case (locVar l) of
-                       Nothing     ->  case locVar r of 
+       -- locVar True for variables and locVar False for values
+       locVar :: Bool -> Expr -> Maybe (Loc , Expr)
+       locVar True Var          = Just (Sg, Var)
+       locVar False (Value n)   = Just (Sg, Value n)
+       locVar True (Cval n Var) = Just (Sg, Cval n Var)  
+       locVar b (Sub l r)       = 
+                     case (locVar b l) of
+                       Nothing     ->  case locVar b  r of 
                                          Just (sg, ys) ->  if sg == Sg then
                                                                Just (WSub, ys)
                                                            else 
@@ -454,8 +448,9 @@ transpose eq@(Eqn el er) =
                                             Just (WAdd, ys)
                                         else 
                                             Just (sg, ys)
-       locVar (Add l r)    = case (locVar l) of
-                       Nothing     ->  case locVar r of 
+       locVar b (Add l r)       = 
+                    case (locVar b l) of
+                       Nothing     ->  case locVar b r of 
                                          Just (sg, ys) ->  if sg == Sg then
                                                                Just (WAdd, ys)
                                                            else 
@@ -465,43 +460,18 @@ transpose eq@(Eqn el er) =
                                             Just (WAdd, ys)
                                         else 
                                             Just (sg, ys)
-       locVar    x         = Nothing
+       locVar  _   _            =  Nothing
 
-       -- locate a value
-       locVal :: Expr -> Maybe (Loc , Expr)
-       locVal (Value n)    = Just (Sg, Value n)
-       locVal (Add l r)    = case (locVal l) of
-                       Nothing     ->  case locVal r of 
-                                         Just (sg, ys) ->  if sg == Sg then
-                                                               Just (WAdd, ys)
-                                                           else 
-                                                               Just (sg, ys)
-                                         _     -> Nothing 
-                       Just (sg, ys) -> if sg == Sg then
-                                            Just (WAdd, ys)
-                                        else 
-                                            Just (sg, ys)
-       locVal (Sub l r)    = case (locVal l) of
-                       Nothing     ->  case locVal r of 
-                                         Just (sg, ys) ->  if sg == Sg then
-                                                               Just (WSub, ys)
-                                                           else 
-                                                               Just (sg, ys)
-                                         _     -> Nothing 
-                       Just (sg, ys) -> if sg == Sg then
-                                            Just (WAdd, ys)
-                                        else 
-                                            Just (sg, ys)
-       locVal    x         = Nothing
 -------------------------------------------------------------------------------------------
 ---------------------- solving an equation -----------------------
 -- we generate a list of steps taken to solve the equation, so we can easily trace the
 -- steps by printing out the list
 solveEqnl :: Equation -> [(Equation, String)]
+solveEqnl eq@(Eqn Var (Div _ (Value 0)))  = [(eq,"undefined")] 
 solveEqnl eqn 
-    | solved eqn    = [(eqn, "Solved")]
+    | solved eqn    = [] 
     | canDiv eqn    = let deqn = divide eqn in  [(deqn,"Dividing")] ++ solveEqnl deqn 
-    | canTrans eqn  = let teqn = transpose eqn in  [(teqn,"Transposing") ] ++ solveEqnl teqn 
+    | canTrans eqn  = let teqn = transpose eqn in [(teqn,"Transposing") ] ++ solveEqnl teqn 
     | otherwise     =  case appAddSub eqn of
                          (eq , Nothing) -> solveEqnl eq
                          (eq, Just str) -> [(eq,str)] ++  solveEqnl eq 
@@ -545,7 +515,7 @@ runSolvr :: String -> IO ()
 runSolvr   str = do 
      let ms =  liftM solveEqnl $ parseEqString str
      case ms of   
-        -- we use take 10 here for debugging reasons, in case we end up with an infininte loop 
+        -- we use take 15 here for debugging reasons, in case we end up with an infininte loop 
         Just xs  -> mapM_ (\(a,b) ->putStrLn (show a ++ " " ++ b)) $ take 15 xs
         Nothing  -> print "error in input" 
 

@@ -1,7 +1,4 @@
---module esit where
-
--- (parseResult,  parseEqString, runSolvr)
-
+-- 
 import Data.Char (isNumber,isSpace)
 import Data.List (partition)
 import Control.Monad (liftM,liftM2)

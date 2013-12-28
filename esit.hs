@@ -436,13 +436,8 @@ transpose eq@(Eqn el er) =
        locVar b (Sub l r)       = 
                      case (locVar b l) of
                        Nothing     ->  case locVar b  r of 
-                                         Just (sg, ys) ->  if sg == Sg then
-                                                               case r of 
-                                                               --  Sub _ _ -> Just (WAdd, ys)
-                                                                 _       -> Just (WSub, ys)
-                                                           else 
-                                                               Just (WSub, ys)
-                                         _     -> Nothing 
+                                         Just (sg, ys) -> Just (WSub, ys)
+                                         _             -> Nothing 
                        Just (sg, ys) -> if sg == Sg then
                                             case l of 
                                               Sub _ _ -> Just (WSub, ys)

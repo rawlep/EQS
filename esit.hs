@@ -415,19 +415,29 @@ canDiv       _                                      =  False
 data Loc = WAdd | WSub | Sg deriving (Eq , Show)
 
 -- execute a transposition 
-transpose :: Equation -> Equation 
+transpose :: Equation -> (Equation,(Equation,String)) 
 transpose eq@(Eqn el er) =
      case locVar True er of  -- 
-        Just (Sg, l)   -> Eqn (simplify $ Sub el l) (simplify $ Sub er l)
-        Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
-        Just (WAdd, l) -> Eqn (simplify $ Sub l el) (simplify $ Sub l er)  
+        Just (Sg, l)   -> ( Eqn (Sub el l) (simplify $ Sub er l) ,
+                           (Eqn (simplify $ Sub el l) (simplify $ Sub er l), "Subtracting"))
+        Just (WSub, l) ->  (Eqn (Add l el) (simplify $ Add l er), 
+                           (Eqn (simplify $ Add l el) (simplify $ Add l er) , "Adding"))
+        Just (WAdd, l) ->  (Eqn (Add (negV l) el) (simplify $ Sub l er),
+                           (Eqn (simplify $ Add el (negV l)) (simplify $ Sub l er) , "Adding"))
         Nothing ->  case locVar False el of 
-                      Just (Sg, l)   -> Eqn (simplify $ Sub el l) (simplify $ Sub er l) 
-                      Just (WSub, l) -> Eqn (simplify $ Add l el) (simplify $ Add l er)
-                      Just (WAdd, l) -> Eqn (simplify $  Sub l el) (simplify $ Sub er l) 
-                      Nothing        -> eq
+                      Just (Sg, l)   -> (Eqn (simplify $ Sub el l) (Sub er l),
+                                        (Eqn (simplify $ Sub el l) (simplify $ Sub er l), "Subtracting"))
+                      Just (WSub, l) -> (Eqn (simplify $ Add l el) ( Add er l),
+                                        (Eqn (simplify $ Add l el) (simplify $ Add er l),"Adding"))
+                      Just (WAdd, l) -> (Eqn (simplify $  Sub l el) (Sub er l),
+                                        (Eqn (simplify $  Sub l el) (simplify $ Sub er l), "Subtracting"))
+                      Nothing        -> (eq, (eq,""))
      where
        --- locating values and variables for transposing
+       negV :: Expr -> Expr
+       negV Var     = Cval (-1) Var
+       negV (Cval n a)  = Cval (-n) a
+       negV    xs       =   xs       
        -- locVar True for variables and locVar False for values
        locVar :: Bool -> Expr -> Maybe (Loc , Expr)
        locVar True Var          = Just (Sg, Var)
@@ -436,8 +446,14 @@ transpose eq@(Eqn el er) =
        locVar b (Sub l r)       = 
                      case (locVar b l) of
                        Nothing     ->  case locVar b  r of 
-                                         Just (sg, ys) -> Just (WSub, ys)
-                                         _             -> Nothing 
+                                         Just (sg, ys) ->  Just (WSub, ys) 
+                                                          {-if sg == Sg then
+                                                               case r of 
+                                                                  -- Sub _ _ -> Just (WAdd, ys)
+                                                                  _       -> Just (WSub, ys)
+                                                           else 
+                                                               Just (WSub, ys) --}
+                                         _     -> Nothing 
                        Just (sg, ys) -> if sg == Sg then
                                             case l of 
                                               Sub _ _ -> Just (WSub, ys)
@@ -467,7 +483,8 @@ solveEqnl eq@(Eqn Var (Div _ (Value 0)))  = [(eq,"undefined")]
 solveEqnl eqn 
     | solved eqn    = [] 
     | canDiv eqn    = let deqn = divide eqn in  [(deqn,"Dividing")] ++ solveEqnl deqn 
-    | canTrans eqn  = let teqn = transpose eqn in [(teqn,"Transposing") ] ++ solveEqnl teqn 
+    | canTrans eqn  = let (aeq, (teqn,str)) = transpose eqn in 
+                          [(aeq,"Transposing"),(teqn,str) ] ++ solveEqnl teqn 
     | otherwise     =  case appAddSub eqn of
                          (eq , Nothing) -> solveEqnl eq
                          (eq, Just str) -> [(eq,str)] ++  solveEqnl eq 
@@ -523,5 +540,8 @@ main                  = do
                            let str1 = "\nEnter the equation to solve : "
                            let str2 =  "-----------------------------------------------------------------"         
                            putStrLn (str2 ++ str1)
-                           str <- getLine
-                           runSolvr str
+                           getLine >>= runSolvr
+                           --- try again
+                           print "Press enter to try again"
+                           c <- getChar 
+                           if c == '\n' then main else return ()

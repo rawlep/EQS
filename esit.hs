@@ -89,6 +89,7 @@ sub2add  (Sub l (Cval n Var))         = Add (sub2add l) (Cval (-n) Var)
 sub2add  (Add l r)                    = Add (sub2add l) (sub2add r)
 sub2add  (Sub l (Sub (Value n) k))    = Add (sub2add l) (sub2add $ Sub (Value (-n)) k )
 sub2add  (Sub l (Sub (Cval n Var) k)) = Add (sub2add l) (sub2add $ Sub (Cval (-n) Var) k ) 
+sub2add  (Sub l (Sub   Var k))        = Add (sub2add l) (sub2add $ Sub (Cval (-1) Var) k )
 sub2add  (Sub l r)                    = Add (sub2add l) (sub2add r)
 sub2add     xs                        = xs 
 --

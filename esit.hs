@@ -94,23 +94,6 @@ sub2add  (Sub l r)                    = Add (sub2add l) (sub2add r)
 sub2add     xs                        = xs 
 --
 
---- rewrites (Add a (Add b (Add c) d) k)  ->  Add (Add a  b) (Add (Add c d) k)
---- if a b c and d are the same type
-trnAdd :: Expr -> Expr
-trnAdd s@(Add a b)
-    | canComp a b   =  s 
-    | otherwise     = case b of
-                        Add p q -> if canComp a p  
-                                   then (Add (Add a p) (trnAdd q))
-                                   else 
-                                       case p of
-                                         Sub r s -> if canComp a r  
-                                                    then Add (Add a r) (Sub s (trnAdd q))
-                                                    else (Add a (trnAdd b))
-                                         _       -> (Add a (trnAdd b))
-                        _       -> Add a (trnAdd b)
-trnAdd  xs         =  xs       
-
 nComp :: Expr  -> Bool
 nComp  l     =   not (isVar l ||  isVal l)
 

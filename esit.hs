@@ -206,7 +206,7 @@ simplify' :: Int -> Expr -> Expr
 simplify' n ex
     | normFrm ex    = remZero ex
     | n > 100       = remZero ex                          
-    | otherwise     = simplify' (n + 1) $  (add  . trnAdd . group . sub2add . remZero) ex 
+    | otherwise     = simplify' (n + 1) $  (add  . group . sub2add . remZero) ex 
     where 
       --
       normFrm :: Expr -> Bool
